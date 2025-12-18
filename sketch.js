@@ -1,6 +1,7 @@
 /*
   Neon Defender: Survival Arena
   Original p5.js single-player game
+  Author: Ijaz Rahman
 */
 
 let game;
@@ -52,17 +53,20 @@ class Game {
 
     this.player.update();
 
+    // Enemy spawning with difficulty scaling
     this.spawnTimer++;
     if (this.spawnTimer > max(25, 120 - this.level * 10)) {
       this.enemies.push(new Enemy());
       this.spawnTimer = 0;
     }
 
+    // Update bullets
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       this.bullets[i].update();
       if (this.bullets[i].offscreen()) this.bullets.splice(i, 1);
     }
 
+    // Update enemies
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       this.enemies[i].update(this.player);
 
@@ -71,6 +75,7 @@ class Game {
       }
     }
 
+    // Bullet–enemy collisions
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       for (let j = this.bullets.length - 1; j >= 0; j--) {
         if (this.enemies[i].hits(this.bullets[j])) {
@@ -84,6 +89,7 @@ class Game {
       }
     }
 
+    // Particles
     for (let i = this.particles.length - 1; i >= 0; i--) {
       this.particles[i].update();
       if (this.particles[i].life <= 0) this.particles.splice(i, 1);
@@ -104,13 +110,20 @@ class Game {
 
   handleKey(code) {
     if (this.state !== "play" && code === ENTER) this.start();
+
     if (this.state === "play" && code === 32) {
-      this.bullets.push(this.player.shoot());
+      const b = this.player.shoot();
+      if (b) this.bullets.push(b);
     }
   }
 
   handleMouse() {
-    if (this.state !== "play") this.start();
+    if (this.state !== "play") {
+      this.start();
+      return;
+    }
+    const b = this.player.shoot();
+    if (b) this.bullets.push(b);
   }
 
   createExplosion(x, y) {
@@ -125,7 +138,7 @@ class Game {
     textAlign(LEFT);
     text("Score: " + this.score, 20, 25);
     text("Level: " + this.level, 20, 45);
-    text("Move: WASD / Arrows | Shoot: Space", 20, 65);
+    text("Move: WASD / Arrows | Aim: Mouse | Shoot: Space / Click", 20, 65);
   }
 
   drawMenu() {
@@ -149,13 +162,15 @@ class Game {
   }
 }
 
-/* ================= PLAYER ================= */
+/* ================= PLAYER (SHIP) ================= */
 
 class Player {
   constructor() {
     this.pos = createVector(width / 2, height / 2);
-    this.radius = 15;
+    this.radius = 18;
     this.speed = 4;
+    this.angle = 0;
+    this.cooldown = 0;
   }
 
   update() {
@@ -166,16 +181,46 @@ class Player {
 
     this.pos.x = constrain(this.pos.x, this.radius, width - this.radius);
     this.pos.y = constrain(this.pos.y, this.radius, height - this.radius);
+
+    // Aim toward mouse
+    this.angle = atan2(mouseY - this.pos.y, mouseX - this.pos.x);
+
+    if (this.cooldown > 0) this.cooldown--;
   }
 
   draw() {
+    push();
+    translate(this.pos.x, this.pos.y);
+    rotate(this.angle);
+
     noStroke();
+
+    // Engine glow
+    fill(255, 0, 255, 140);
+    ellipse(-18, 0, 10, 10);
+
+    // Ship body
     fill(0, 255, 200);
-    ellipse(this.pos.x, this.pos.y, this.radius * 2);
+    triangle(22, 0, -14, -12, -14, 12);
+
+    // Cockpit
+    fill(255, 255, 255, 180);
+    ellipse(2, 0, 6, 6);
+
+    pop();
   }
 
   shoot() {
-    return new Bullet(this.pos.x, this.pos.y);
+    if (this.cooldown > 0) return null;
+    this.cooldown = 8;
+
+    const dir = p5.Vector.fromAngle(this.angle).setMag(7);
+    const muzzle = p5.Vector.add(
+      this.pos,
+      p5.Vector.fromAngle(this.angle).setMag(22)
+    );
+
+    return new Bullet(muzzle.x, muzzle.y, dir.x, dir.y);
   }
 }
 
@@ -213,9 +258,9 @@ class Enemy {
 /* ================= BULLET ================= */
 
 class Bullet {
-  constructor(x, y) {
+  constructor(x, y, vx, vy) {
     this.pos = createVector(x, y);
-    this.vel = createVector(0, -6);
+    this.vel = createVector(vx, vy);
     this.radius = 5;
   }
 
@@ -229,7 +274,10 @@ class Bullet {
   }
 
   offscreen() {
-    return this.pos.y < 0;
+    return (
+      this.pos.x < -20 || this.pos.x > width + 20 ||
+      this.pos.y < -20 || this.pos.y > height + 20
+    );
   }
 }
 
